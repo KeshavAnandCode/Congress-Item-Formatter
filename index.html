@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Resolution Formatter — Enhanced</title>
+<style>
+  :root{
+    --bg:#f0f2f5;
+    --card:#ffffff;
+    --ink:#111827;
+    --muted:#6b7280;
+    --accent:#1f2937;
+    --primary:#4f46e5;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);}
+  body{font-family: Calibri, sans-serif; font-size:11pt; line-height:1.5;}
+  .wrap{max-width:1000px;margin:32px auto;padding:16px;}
+  .card{background:var(--card); border-radius:16px; box-shadow:0 8px 20px rgba(0,0,0,0.08); padding:24px;}
+  header{margin-bottom:24px;}
+  header h1{margin:0;font-size:24px;font-weight:700;color:var(--accent);}
+  header p{margin:6px 0 0;color:var(--muted);font-size:14px;}
+
+  textarea{width:100%; min-height:280px; resize:vertical; padding:14px 16px; font-size:14px; line-height:1.5; border:1px solid #d1d5db; border-radius:12px; background:#fcfcff; color:#1f2937; outline:none;}
+  textarea:focus{border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,0.15);}
+
+  .controls{display:flex; gap:12px; margin:16px 0; flex-wrap:wrap;}
+  button{appearance:none; border:0; padding:12px 16px; border-radius:12px; cursor:pointer; background:var(--primary); color:#fff; font-weight:600; font-size:14px; transition:all 0.2s ease;}
+  button:hover{background:#4338ca;}
+  button.secondary{background:#e5e7eb; color:#111827;}
+  button.secondary:hover{background:#d1d5db;}
+
+  .preview{border:1px solid #e5e7eb; border-radius:12px; padding:20px; min-height:320px; background:#fff; margin-top:24px; overflow:auto; font-family:Calibri, sans-serif; font-size:11pt;}
+
+  .resolution{width:100%; border-collapse:collapse; table-layout:fixed;}
+  .resolution td{vertical-align:top; padding:6px 8px;}
+  .resolution .kw{width:1.5in; font-weight:bold;}
+  .resolution .tx{width:7in;}
+
+  @media (max-width: 900px){
+    .wrap{padding:12px;}
+    .resolution .kw, .resolution .tx{display:block; width:100%;}
+    .resolution td{padding:8px 6px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <header>
+      <h1>Resolution Formatter</h1>
+      <p>Paste your resolution or bill text and get a neatly formatted two-column table output (keyword + text block) for Google Docs.</p>
+    </header>
+
+    <div class="controls">
+      <button id="formatBtn">Format →</button>
+      <button id="clearBtn" class="secondary">Clear</button>
+      <button id="copyBtn" class="secondary">Copy formatted</button>
+    </div>
+
+    <textarea id="src" spellcheck="false">WHEREAS, The Fair Labor Standards Act establishes the standard workweek as forty hours,
+despite evidence that maximum productivity and personal well-being correlate to a thirty-two-hour workweek; and
+
+WHEREAS, Nearly two-thirds of Americans acknowledge they lack a work-life balance, and Human Resources Professionals recognize being overworked as a leading risk factor; and
+
+SECTION 1. The Congress here assembled should redefine the American workweek to thirty-two hours per week.
+SECTION 2. Hours worked over thirty-two hours per week shall be compensated with overtime pay.</textarea>
+
+    <div id="preview" class="preview" aria-live="polite"></div>
+  </div>
+</div>
+
+<script>
+function parseBlocks(text){
+  const lines = text.split(/\n+/);
+  const blocks = [];
+  let current = null;
+  const keywordRegex = /^(WHEREAS,|RESOLVED,|FURTHER RESOLVED,|SECTION\s+\d+\.?)/i;
+
+  for(const line of lines){
+    const m = line.trim().match(keywordRegex);
+    if(m){
+      if(current) blocks.push(current);
+      current = {kw: m[1], text: line.replace(m[1], '').trim()};
+    }else if(current){
+      current.text += (current.text ? ' ' : '') + line.trim();
+    }
+  }
+  if(current) blocks.push(current);
+  return blocks;
+}
+
+function buildHTML(blocks){
+  const rows = blocks.map(b=>`
+    <tr>
+      <td class="kw">${escapeHTML(b.kw)}</td>
+      <td class="tx">${escapeHTML(b.text)}</td>
+    </tr>`).join("\n");
+  return `<table class="resolution"><tbody>${rows}</tbody></table>`;
+}
+
+function escapeHTML(s){
+  return s.replace(/[&<>\"]|\u00A0/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\u00A0':' ' }[ch]));
+}
+
+function formatNow(){
+  const src = document.getElementById('src').value;
+  const blocks = parseBlocks(src);
+  document.getElementById('preview').innerHTML = buildHTML(blocks);
+}
+
+async function copyFormatted(){
+  const preview = document.getElementById('preview');
+  if(!preview.firstElementChild){ formatNow(); }
+  const html = preview.innerHTML.replace('<table','<table style="width:100%; border-collapse:collapse; table-layout:fixed; font-family:Calibri,sans-serif; font-size:11pt;"')
+    .replaceAll('class="kw"','style="width:1.5in; font-weight:bold; vertical-align:top; padding:6px 8px;"')
+    .replaceAll('class="tx"','style="width:7in; vertical-align:top; padding:6px 8px;"');
+
+  const blobHTML = new Blob([html], {type:"text/html"});
+  const plain = preview.innerText;
+  const blobText = new Blob([plain], {type:"text/plain"});
+
+  try{
+    await navigator.clipboard.write([new ClipboardItem({"text/html": blobHTML, "text/plain": blobText})]);
+    flash("Copied! Paste into Google Docs.");
+  }catch(err){
+    const range = document.createRange();
+    range.selectNodeContents(preview);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    flash("Copied! Paste into Google Docs.");
+  }
+}
+
+function flash(msg){
+  const b = document.getElementById('copyBtn');
+  const old = b.textContent;
+  b.textContent = msg;
+  b.disabled = true;
+  setTimeout(()=>{ b.textContent = old; b.disabled = false; }, 1200);
+}
+
+document.getElementById('formatBtn').addEventListener('click', formatNow);
+document.getElementById('copyBtn').addEventListener('click', copyFormatted);
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  document.getElementById('src').value='';
+  document.getElementById('preview').innerHTML='';
+});
+window.addEventListener('load', formatNow);
+</script>
+</body>
+</html>
