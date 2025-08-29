@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Resolution Formatter — Enhanced UI</title>
+<title>Resolution Formatter — Sections & Subsections</title>
 <style>
   :root{
     --bg:#f0f2f5;
@@ -19,8 +19,7 @@
   }
 
   html, body {
-    margin:0;
-    padding:0;
+    margin:0; padding:0;
     background:var(--bg);
     color:var(--ink);
     font-family:Calibri, sans-serif;
@@ -28,12 +27,7 @@
     line-height:1.5;
   }
 
-  .wrap {
-    max-width:900px;
-    margin:40px auto;
-    padding:16px;
-  }
-
+  .wrap { max-width:900px; margin:40px auto; padding:16px; }
   .card {
     background:var(--card);
     border-radius:16px;
@@ -44,19 +38,8 @@
     gap:24px;
   }
 
-  header h1 {
-    margin:0;
-    font-size:28px;
-    font-weight:700;
-    color:var(--accent);
-  }
-
-  header p {
-    margin-top:8px;
-    color:var(--muted);
-    font-size:15px;
-    line-height:1.5;
-  }
+  header h1 { margin:0; font-size:28px; font-weight:700; color:var(--accent);}
+  header p { margin-top:8px; color:var(--muted); font-size:15px; line-height:1.5; }
 
   textarea {
     width:100%;
@@ -102,15 +85,8 @@
   }
 
   button:hover { background:#4338ca; }
-
-  button.secondary {
-    background:#e5e7eb;
-    color:var(--ink);
-  }
-
-  button.secondary:hover {
-    background:#d1d5db;
-  }
+  button.secondary { background:#e5e7eb; color:var(--ink); }
+  button.secondary:hover { background:#d1d5db; }
 
   .preview {
     border:1px solid #e5e7eb;
@@ -125,38 +101,15 @@
     box-shadow:0 4px 12px var(--shadow-color);
   }
 
-  .resolution {
-    width:100%;
-    border-collapse:collapse;
-    table-layout:fixed;
-  }
-
-  .resolution td {
-    vertical-align:top;
-    padding:8px 10px;
-    word-break:break-word;
-  }
-
-  .resolution .kw {
-    width:1.5in;
-    font-weight:bold;
-  }
-
-  .resolution .tx {
-    width:7in;
-  }
+  .resolution { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .resolution td { vertical-align:top; padding:8px 10px; word-break:break-word; }
+  .resolution .kw { width:1.5in; font-weight:bold; }
+  .resolution .tx { width:7in; }
 
   @media(max-width:800px) {
-    .wrap {
-      padding:12px;
-    }
-    .resolution .kw, .resolution .tx {
-      display:block;
-      width:100%;
-    }
-    .resolution td {
-      padding:10px 6px;
-    }
+    .wrap { padding:12px; }
+    .resolution .kw, .resolution .tx { display:block; width:100%; }
+    .resolution td { padding:10px 6px; }
   }
 </style>
 </head>
@@ -165,7 +118,7 @@
   <div class="card">
     <header>
       <h1>Resolution Formatter</h1>
-      <p>Paste your line-numbered resolution or bill; the formatter will combine blocks under each keyword and provide a neat two-column table output for Google Docs.</p>
+      <p>Paste your line-numbered bill or resolution. Sections and subsections are formatted as a two-column table for Google Docs.</p>
     </header>
 
     <div class="controls">
@@ -174,23 +127,7 @@
       <button id="copyBtn" class="secondary">Copy formatted</button>
     </div>
 
-    <textarea id="src" spellcheck="false">1 WHEREAS, The Fair Labor Standards Act establishes the standard workweek as forty hours,
-2 despite evidence that maximum productivity and personal well-being correlate
-3 to a thirty-two-hour workweek; and
-4 WHEREAS, Nearly two-thirds of Americans acknowledge they lack a work-life balance, and
-5 Human Resources Professionals recognize being overworked as a leading risk
-6 factor for semi-preventable health conditions such as cardiovascular disease,
-7 stroke and diabetes; and
-8 WHEREAS, Studies confirm a correlation between long working hours and elevated risk of
-9 premature cardiovascular disease, stroke, and diabetes; and
-10 WHEREAS, Together, these health conditions cost over $800 billion each year in treatment
-11 costs and lost productivity; and
-12 WHEREAS, These preventable diseases are responsible for fifty-seven percent of annual
-13 mortalities; now, therefore, be it
-14 RESOLVED, That the Congress here assembled should redefine the American workweek to be
-15 thirty-two hours per week; and, be it
-16 FURTHER RESOLVED, That hours worked over thirty-two hours per week should be compensated
-17 with overtime pay.</textarea>
+    <textarea id="src" spellcheck="false" placeholder="Paste your bill or resolution here (without title)"></textarea>
 
     <div id="preview" class="preview" aria-live="polite"></div>
   </div>
@@ -200,29 +137,56 @@
 function parseBlocks(text){
   const lines = text.split(/\n+/);
   const blocks = [];
-  let current = null;
-  const keywordRegex = /^(?:\d+\s+)?(WHEREAS,|RESOLVED,|FURTHER RESOLVED,|SECTION\s+\d+\.?)/i;
+  let currentSection = null;
+
+  const sectionRegex = /^(?:\d+\s+)?(SECTION\s+\d+\.|WHEREAS,|RESOLVED,|FURTHER RESOLVED,)/i;
+  const subsectionRegex = /^(?:\d+\s+)?([A-Z]\.)\s*/;
 
   for(const line of lines){
-    const m = line.trim().match(keywordRegex);
-    if(m){
-      if(current) blocks.push(current);
-      current = {kw: m[1], text: line.replace(/^\d+\s+/, '').replace(m[1], '').trim()};
-    }else if(current){
-      current.text += (current.text ? ' ' : '') + line.trim();
+    let trimmed = line.trim();
+    if(!trimmed) continue;
+
+    // Skip "BE IT ENACTED..." line
+    if(/BY THE CONGRESS HERE ASSEMBLED/i.test(trimmed)) continue;
+
+    // Skip "Introduced for Congressional Debate" line
+    if(/Introduced for Congressional Debate/i.test(trimmed)) continue;
+
+    let mSec = trimmed.match(sectionRegex);
+    let mSub = trimmed.match(subsectionRegex);
+
+    if(mSec){
+      if(currentSection) blocks.push(currentSection);
+      currentSection = {kw: mSec[1], text: trimmed.replace(/^\d+\s+/, '').replace(mSec[1], '').trim(), subsections: []};
+    } else if(mSub && currentSection){
+      currentSection.subsections.push({kw: mSub[1], text: trimmed.replace(/^\d+\s+/, '').replace(mSub[1], '').trim()});
+    } else if(currentSection){
+      // Append to last subsection if exists, else section text
+      if(currentSection.subsections.length > 0){
+        let lastSub = currentSection.subsections[currentSection.subsections.length-1];
+        lastSub.text += ' ' + trimmed;
+      } else {
+        currentSection.text += ' ' + trimmed;
+      }
+    } else {
+      // Freeform text outside sections
+      blocks.push({kw:'', text: trimmed, subsections: []});
     }
   }
-  if(current) blocks.push(current);
+
+  if(currentSection) blocks.push(currentSection);
   return blocks;
 }
 
 function buildHTML(blocks){
-  const rows = blocks.map(b=>`
-    <tr>
-      <td class="kw">${escapeHTML(b.kw)}</td>
-      <td class="tx">${escapeHTML(b.text)}</td>
-    </tr>`).join("\n");
-  return `<table class="resolution"><tbody>${rows}</tbody></table>`;
+  const rows = [];
+  for(const sec of blocks){
+    rows.push(`<tr><td class="kw">${escapeHTML(sec.kw)}</td><td class="tx">${escapeHTML(sec.text)}</td></tr>`);
+    for(const sub of sec.subsections){
+      rows.push(`<tr><td class="kw"></td><td class="tx">${escapeHTML(sub.kw)} ${escapeHTML(sub.text)}</td></tr>`);
+    }
+  }
+  return `<table class="resolution"><tbody>${rows.join('\n')}</tbody></table>`;
 }
 
 function escapeHTML(s){
