@@ -23,8 +23,8 @@
     padding:0;
     background:var(--bg);
     color:var(--ink);
-    font-family: Calibri, sans-serif;
-    font-size:11pt;
+    font-family:Calibri, sans-serif;
+    font-size:12pt;
     line-height:1.5;
   }
 
@@ -55,7 +55,7 @@
     margin-top:8px;
     color:var(--muted);
     font-size:15px;
-    line-height:1.6;
+    line-height:1.5;
   }
 
   textarea {
@@ -64,8 +64,8 @@
     min-height:280px;
     resize:vertical;
     padding:16px 18px;
-    font-size:14px;
-    line-height:1.6;
+    font-size:12pt;
+    line-height:1.5;
     border:1px solid var(--input-border);
     border-radius:14px;
     background:var(--input-bg);
@@ -120,8 +120,8 @@
     background:#fff;
     overflow:auto;
     font-family:Calibri, sans-serif;
-    font-size:11pt;
-    line-height:1.6;
+    font-size:12pt;
+    line-height:1.5;
     box-shadow:0 4px 12px var(--shadow-color);
   }
 
@@ -174,7 +174,23 @@
       <button id="copyBtn" class="secondary">Copy formatted</button>
     </div>
 
-    <textarea id="src" spellcheck="false">Paste item...</textarea>
+    <textarea id="src" spellcheck="false">1 WHEREAS, The Fair Labor Standards Act establishes the standard workweek as forty hours,
+2 despite evidence that maximum productivity and personal well-being correlate
+3 to a thirty-two-hour workweek; and
+4 WHEREAS, Nearly two-thirds of Americans acknowledge they lack a work-life balance, and
+5 Human Resources Professionals recognize being overworked as a leading risk
+6 factor for semi-preventable health conditions such as cardiovascular disease,
+7 stroke and diabetes; and
+8 WHEREAS, Studies confirm a correlation between long working hours and elevated risk of
+9 premature cardiovascular disease, stroke, and diabetes; and
+10 WHEREAS, Together, these health conditions cost over $800 billion each year in treatment
+11 costs and lost productivity; and
+12 WHEREAS, These preventable diseases are responsible for fifty-seven percent of annual
+13 mortalities; now, therefore, be it
+14 RESOLVED, That the Congress here assembled should redefine the American workweek to be
+15 thirty-two hours per week; and, be it
+16 FURTHER RESOLVED, That hours worked over thirty-two hours per week should be compensated
+17 with overtime pay.</textarea>
 
     <div id="preview" class="preview" aria-live="polite"></div>
   </div>
@@ -222,7 +238,7 @@ function formatNow(){
 async function copyFormatted(){
   const preview = document.getElementById('preview');
   if(!preview.firstElementChild){ formatNow(); }
-  const html = preview.innerHTML.replace('<table','<table style="width:100%; border-collapse:collapse; table-layout:fixed; font-family:Calibri,sans-serif; font-size:11pt;"')
+  const html = preview.innerHTML.replace('<table','<table style="width:100%; border-collapse:collapse; table-layout:fixed; font-family:Calibri,sans-serif; font-size:12pt; line-height:1.5;"')
     .replaceAll('class="kw"','style="width:1.5in; font-weight:bold; vertical-align:top; padding:6px 8px;"')
     .replaceAll('class="tx"','style="width:7in; vertical-align:top; padding:6px 8px;"');
 
