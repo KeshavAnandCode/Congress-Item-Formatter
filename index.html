@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Resolution Formatter — Sections & Subsections</title>
+<title>Resolution Formatter — Sections & Subsections (fixed parsing)</title>
 <style>
   :root{
     --bg:#f0f2f5;
@@ -58,6 +58,11 @@
     transition: all 0.3s ease;
   }
 
+  textarea::placeholder {
+    color: #9aa3b2;
+    opacity:1;
+  }
+
   textarea:focus {
     border-color:var(--input-focus);
     box-shadow:0 0 0 4px rgba(99,102,241,0.2);
@@ -102,14 +107,14 @@
   }
 
   .resolution { width:100%; border-collapse:collapse; table-layout:fixed; }
-  .resolution td { vertical-align:top; padding:8px 10px; word-break:break-word; }
+  .resolution td { vertical-align:top; padding:10px 10px; word-break:break-word; } /* slightly larger vertical spacing */
   .resolution .kw { width:1.5in; font-weight:bold; }
   .resolution .tx { width:7in; }
 
   @media(max-width:800px) {
     .wrap { padding:12px; }
     .resolution .kw, .resolution .tx { display:block; width:100%; }
-    .resolution td { padding:10px 6px; }
+    .resolution td { padding:12px 6px; }
   }
 </style>
 </head>
@@ -134,46 +139,110 @@
 </div>
 
 <script>
+/*
+  Updated parseBlocks:
+  - Strips ONLY leading whole-line numbers (^\d+\s+) so inline numbers like "$2 billion" are preserved.
+  - Removes lines containing the enactment header and introduced-for-debate footer.
+  - Properly handles SECTION lines that include inline subsections (splits them).
+  - Subsections (A., B., C.) become rows with an empty left column and their text in the right column.
+*/
+
 function parseBlocks(text){
-  const lines = text.split(/\n+/);
+  const rawLines = text.split(/\n/); // preserve each physical line so we can strip leading numbers safely
   const blocks = [];
   let currentSection = null;
 
-  const sectionRegex = /^(?:\d+\s+)?(SECTION\s+\d+\.|WHEREAS,|RESOLVED,|FURTHER RESOLVED,)/i;
-  const subsectionRegex = /^(?:\d+\s+)?([A-Z]\.)\s*/;
+  // Patterns
+  const sectionHeadRegex = /^(SECTION\s+\d+\.?)/i;                 // e.g. SECTION 2.
+  const genericSectionRegex = /^(SECTION\s+\d+\.?|WHEREAS,|RESOLVED,|FURTHER RESOLVED,)/i;
+  const subsectionStartRegex = /^([A-Z]\.)\s*/;                    // e.g. 'A. '
+  const leadingLineNumberRegex = /^\d+\s+/;                        // leading line numbers to remove
+  const enactedRegex = /^BE IT ENACTED BY THE CONGRESS HERE ASSEMBLED/i;
+  const introducedRegex = /Introduced for Congressional Debate/i;
 
-  for(const line of lines){
-    let trimmed = line.trim();
-    if(!trimmed) continue;
+  for(let rawLine of rawLines){
+    // Keep original whitespace-trimmed content
+    let line = rawLine.trim();
+    if(!line) continue;
 
-    // Skip "BE IT ENACTED..." line
-    if(/BY THE CONGRESS HERE ASSEMBLED/i.test(trimmed)) continue;
+    // Remove leading line number if present (only at start of this physical line)
+    line = line.replace(leadingLineNumberRegex, "");
 
-    // Skip "Introduced for Congressional Debate" line
-    if(/Introduced for Congressional Debate/i.test(trimmed)) continue;
+    // Skip unwanted boilerplate lines anywhere they appear
+    if(enactedRegex.test(line)) continue;
+    if(introducedRegex.test(line)) continue;
 
-    let mSec = trimmed.match(sectionRegex);
-    let mSub = trimmed.match(subsectionRegex);
+    // If the line begins with a recognized SECTION / WHEREAS / RESOLVED token
+    let secMatch = line.match(genericSectionRegex);
 
-    if(mSec){
+    // Special handling when line contains SECTION followed by inline subsections (e.g. "SECTION 2. A. ... B. ...")
+    if(secMatch){
+      // Push previous section
       if(currentSection) blocks.push(currentSection);
-      currentSection = {kw: mSec[1], text: trimmed.replace(/^\d+\s+/, '').replace(mSec[1], '').trim(), subsections: []};
-    } else if(mSub && currentSection){
-      currentSection.subsections.push({kw: mSub[1], text: trimmed.replace(/^\d+\s+/, '').replace(mSub[1], '').trim()});
-    } else if(currentSection){
-      // Append to last subsection if exists, else section text
+
+      // Identify the exact section token (SECTION 2. or WHEREAS, etc.)
+      const token = secMatch[1];
+      // Remove the token from the line to examine the remainder
+      let remainder = line.slice(line.indexOf(token) + token.length).trim();
+
+      // Create a new currentSection container
+      currentSection = { kw: token, text: "", subsections: [] };
+
+      if(!remainder){
+        // nothing after SECTION token on this line — continue to next lines to collect text
+        continue;
+      }
+
+      // If remainder starts with a subsection (A., B., etc.) or contains multiple subsections inline,
+      // split the remainder into parts before each subsection marker.
+      const parts = remainder.split(/(?=(?:[A-Z]\.)\s)/g); // split but keep the marker at start of each part
+
+      // If the first part doesn't start with a subsection token, treat it as section main text
+      if(parts.length > 0 && !subsectionStartRegex.test(parts[0])){
+        currentSection.text = parts[0].trim();
+      }
+
+      // Any subsequent parts that start with a subsection token become subsections
+      for(let p of parts){
+        const ptrim = p.trim();
+        const sm = ptrim.match(subsectionStartRegex);
+        if(sm){
+          // remove the subsection token from text for storage
+          const subkw = sm[1]; // e.g. 'A.'
+          const subtext = ptrim.slice(sm[0].length).trim();
+          currentSection.subsections.push({ kw: subkw, text: subtext });
+        }
+      }
+
+      continue;
+    }
+
+    // If the line itself starts with a subsection marker (A., B., etc.)
+    const subLineMatch = line.match(subsectionStartRegex);
+    if(subLineMatch && currentSection){
+      const subkw = subLineMatch[1];
+      const subtext = line.slice(subLineMatch[0].length).trim();
+      currentSection.subsections.push({ kw: subkw, text: subtext });
+      continue;
+    }
+
+    // If none of the above:
+    if(currentSection){
+      // Append this line to the most recent subsection if one exists, otherwise to the section text
       if(currentSection.subsections.length > 0){
-        let lastSub = currentSection.subsections[currentSection.subsections.length-1];
-        lastSub.text += ' ' + trimmed;
+        const lastSub = currentSection.subsections[currentSection.subsections.length - 1];
+        // join with a space to preserve sentences across wrapped lines
+        lastSub.text = (lastSub.text ? lastSub.text + " " : "") + line;
       } else {
-        currentSection.text += ' ' + trimmed;
+        currentSection.text = (currentSection.text ? currentSection.text + " " : "") + line;
       }
     } else {
-      // Freeform text outside sections
-      blocks.push({kw:'', text: trimmed, subsections: []});
+      // If no current section exists, treat this as freeform top-level content
+      blocks.push({ kw: "", text: line, subsections: [] });
     }
   }
 
+  // Push last section if present
   if(currentSection) blocks.push(currentSection);
   return blocks;
 }
@@ -186,11 +255,11 @@ function buildHTML(blocks){
       rows.push(`<tr><td class="kw"></td><td class="tx">${escapeHTML(sub.kw)} ${escapeHTML(sub.text)}</td></tr>`);
     }
   }
-  return `<table class="resolution"><tbody>${rows.join('\n')}</tbody></table>`;
+  return `<table class="resolution" role="presentation"><tbody>${rows.join('\n')}</tbody></table>`;
 }
 
 function escapeHTML(s){
-  return s.replace(/[&<>\"]|\u00A0/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\u00A0':' ' }[ch]));
+  return (s||"").replace(/[&<>\"]|\u00A0/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\u00A0':' ' }[ch]));
 }
 
 function formatNow(){
@@ -203,8 +272,8 @@ async function copyFormatted(){
   const preview = document.getElementById('preview');
   if(!preview.firstElementChild){ formatNow(); }
   const html = preview.innerHTML.replace('<table','<table style="width:100%; border-collapse:collapse; table-layout:fixed; font-family:Calibri,sans-serif; font-size:12pt; line-height:1.5;"')
-    .replaceAll('class="kw"','style="width:1.5in; font-weight:bold; vertical-align:top; padding:6px 8px;"')
-    .replaceAll('class="tx"','style="width:7in; vertical-align:top; padding:6px 8px;"');
+    .replaceAll('class="kw"','style="width:1.5in; font-weight:bold; vertical-align:top; padding:10px 8px;"')
+    .replaceAll('class="tx"','style="width:7in; vertical-align:top; padding:10px 8px;"');
 
   const blobHTML = new Blob([html], {type:"text/html"});
   const plain = preview.innerText;
@@ -229,7 +298,7 @@ function flash(msg){
   const old = b.textContent;
   b.textContent = msg;
   b.disabled = true;
-  setTimeout(()=>{ b.textContent = old; b.disabled = false; }, 1200);
+  setTimeout(()=>{ b.textContent = old; b.disabled = false; }, 1400);
 }
 
 document.getElementById('formatBtn').addEventListener('click', formatNow);
